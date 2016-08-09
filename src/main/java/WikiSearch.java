@@ -150,7 +150,7 @@ public class WikiSearch {
     private static List<String> splitArgs(List<String> args, String delimiter) {
         List<String> argsBefore = new ArrayList<String>();
         for (String arg: args) {
-            if (arg.equals("or")) {
+            if (arg.equals(delimiter)) {
                 break;
             }
             argsBefore.add(arg);
@@ -163,10 +163,20 @@ public class WikiSearch {
             return search(args.get(0), index);
         }
         List<String> argsBefore = splitArgs(args, "and");
-        List<String> argsAfter = new ArrayList<String>(args.subList(argsBefore.size(), args.size()));
-        WikiSearch before = evaluateMinus(argsBefore, index);
-        WikiSearch after = evaluateAnd(argsAfter, index);
-        return before.and(after);
+        if (args.size() != argsBefore.size()) {
+            List<String> argsAfter = new ArrayList<String>(
+                    args.subList(argsBefore.size() + 1, args.size()));
+            WikiSearch before = evaluateMinus(argsBefore, index);
+            WikiSearch after = evaluateAnd(argsAfter, index);
+            return before.and(after);
+
+        } else {
+            WikiSearch before = evaluateMinus(argsBefore, index);
+            return before;
+        }
+
+
+
     }
 
     private static WikiSearch evaluateMinus(List<String> args, JedisIndex index) {
@@ -174,10 +184,25 @@ public class WikiSearch {
             return search(args.get(0), index);
         }
         List<String> argsBefore = splitArgs(args, "minus");
-        List<String> argsAfter = new ArrayList<String>(args.subList(argsBefore.size(), args.size()));
-        WikiSearch before = evaluateMinus(argsBefore, index);
-        WikiSearch after = evaluateMinus(argsAfter, index);
-        return before.minus(after);
+        if (args.size() != argsBefore.size()) {
+            List<String> argsAfter = new ArrayList<String>(
+                    args.subList(argsBefore.size() + 1, args.size()));
+            String argsBeforeStr = "";
+            for (String arg: argsBefore) {
+                argsBeforeStr += arg;
+            }
+            WikiSearch before = search(argsBeforeStr, index);
+            WikiSearch after = evaluateMinus(argsAfter, index);
+            return before.minus(after);
+        } else {
+            String argsBeforeStr = "";
+            for (String arg: argsBefore) {
+                argsBeforeStr += arg;
+            }
+            WikiSearch before = search(argsBeforeStr, index);
+            return before;
+        }
+
     }
 
     private static WikiSearch evaluateOr(List<String> args, JedisIndex index){
@@ -185,10 +210,17 @@ public class WikiSearch {
             return search(args.get(0), index);
         }
         List<String> argsBefore = splitArgs(args, "or");
-        List<String> argsAfter = new ArrayList<String>(args.subList(argsBefore.size(), args.size()));
-        WikiSearch before = evaluateAnd(argsBefore, index);
-        WikiSearch after = evaluateOr(argsAfter, index);
-        return before.or(after);
+        if (args.size() != argsBefore.size()) {
+            List<String> argsAfter = new ArrayList<String>(
+                    args.subList(argsBefore.size() + 1, args.size()));
+            WikiSearch before = evaluateAnd(argsBefore, index);
+            WikiSearch after = evaluateOr(argsAfter, index);
+            return before.or(after);
+        } else {
+            WikiSearch before = evaluateAnd(argsBefore, index);
+            return before;
+        }
+
     }
 
 	public static void main(String[] args) throws IOException {
@@ -204,25 +236,42 @@ public class WikiSearch {
         OptionSet options = parser.parse(args);
 
 //        List<List<?>> arguments = new ArrayList<List<?>>();
-        List<String> arguments = (List<String>) options.valuesOf("keyword");
+//        List<String> arguments = ((List<String>) options.valueOf("keyword"));
+        String argument = (String) options.valueOf("keyword");
+        int strIndex = argument.indexOf(" ");
+        List<String> arguments = new ArrayList<String>();
+        while (strIndex != -1) {
+            arguments.add(argument.substring(0, strIndex));
+            argument = argument.substring(strIndex + 1);
+            strIndex = argument.indexOf(" ");
+        }
+        arguments.add(argument);
         WikiSearch searchResult = evaluateOr(arguments, index);
         searchResult.print();
 		
-//		// search for the first term
-//		String term1 = "java";
-//		System.out.println("Query: " + term1);
-//		WikiSearch search1 = search(term1, index);
-//		search1.print();
-//
-//		// search for the second term
-//		String term2 = "programming";
-//		System.out.println("Query: " + term2);
-//		WikiSearch search2 = search(term2, index);
-//		search2.print();
-//
-//		// compute the intersection of the searches
-//		System.out.println("Query: " + term1 + " AND " + term2);
-//		WikiSearch intersection = search1.and(search2);
-//		intersection.print();
+		// search for the first term
+		String term1 = "java";
+		System.out.println("Query: " + term1);
+		WikiSearch search1 = search(term1, index);
+		search1.print();
+
+		// search for the second term
+		String term2 = "programming";
+		System.out.println("Query: " + term2);
+		WikiSearch search2 = search(term2, index);
+		search2.print();
+
+		// compute the intersection of the searches
+		System.out.println("Query: " + term1 + " OR " + term2);
+		WikiSearch union = search1.or(search2);
+		union.print();
+
+        System.out.println("Query: " + term1 + " AND " + term2);
+        WikiSearch intersection = search1.and(search2);
+        intersection.print();
+
+        System.out.println("Query: " + term1 + " MINUS " + term2);
+        WikiSearch minus = search1.minus(search2);
+        minus.print();
 	}
 }
