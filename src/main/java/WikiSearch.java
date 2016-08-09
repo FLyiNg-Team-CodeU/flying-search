@@ -1,13 +1,12 @@
 import java.io.IOException;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
 
+import joptsimple.internal.Strings;
 import redis.clients.jedis.Jedis;
+
+import joptsimple.OptionParser;
+import joptsimple.OptionSet;
 
 
 /**
@@ -148,27 +147,82 @@ public class WikiSearch {
 		return new WikiSearch(map);
 	}
 
+    private static List<String> splitArgs(List<String> args, String delimiter) {
+        List<String> argsBefore = new ArrayList<String>();
+        for (String arg: args) {
+            if (arg.equals("or")) {
+                break;
+            }
+            argsBefore.add(arg);
+        }
+        return argsBefore;
+    }
+
+    private static WikiSearch evaluateAnd(List<String> args, JedisIndex index) {
+        if (args.size() == 1) {
+            return search(args.get(0), index);
+        }
+        List<String> argsBefore = splitArgs(args, "and");
+        List<String> argsAfter = new ArrayList<String>(args.subList(argsBefore.size(), args.size()));
+        WikiSearch before = evaluateMinus(argsBefore, index);
+        WikiSearch after = evaluateAnd(argsAfter, index);
+        return before.and(after);
+    }
+
+    private static WikiSearch evaluateMinus(List<String> args, JedisIndex index) {
+        if (args.size() == 1) {
+            return search(args.get(0), index);
+        }
+        List<String> argsBefore = splitArgs(args, "minus");
+        List<String> argsAfter = new ArrayList<String>(args.subList(argsBefore.size(), args.size()));
+        WikiSearch before = evaluateMinus(argsBefore, index);
+        WikiSearch after = evaluateMinus(argsAfter, index);
+        return before.minus(after);
+    }
+
+    private static WikiSearch evaluateOr(List<String> args, JedisIndex index){
+        if (args.size() == 1) {
+            return search(args.get(0), index);
+        }
+        List<String> argsBefore = splitArgs(args, "or");
+        List<String> argsAfter = new ArrayList<String>(args.subList(argsBefore.size(), args.size()));
+        WikiSearch before = evaluateAnd(argsBefore, index);
+        WikiSearch after = evaluateOr(argsAfter, index);
+        return before.or(after);
+    }
+
 	public static void main(String[] args) throws IOException {
-		
 		// make a JedisIndex
 		Jedis jedis = JedisMaker.make();
-		JedisIndex index = new JedisIndex(jedis); 
+		JedisIndex index = new JedisIndex(jedis);
+
+        OptionParser parser = new OptionParser();
+        parser.accepts("keyword").withRequiredArg().ofType(String.class);
+//        parser.accepts("a", "and").withOptionalArg().ofType(String.class);
+//        parser.accepts("o", "or").withOptionalArg().ofType(String.class);
+//        parser.accepts("m", "minus").withOptionalArg().ofType(String.class);
+        OptionSet options = parser.parse(args);
+
+//        List<List<?>> arguments = new ArrayList<List<?>>();
+        List<String> arguments = (List<String>) options.valuesOf("keyword");
+        WikiSearch searchResult = evaluateOr(arguments, index);
+        searchResult.print();
 		
-		// search for the first term
-		String term1 = "java";
-		System.out.println("Query: " + term1);
-		WikiSearch search1 = search(term1, index);
-		search1.print();
-		
-		// search for the second term
-		String term2 = "programming";
-		System.out.println("Query: " + term2);
-		WikiSearch search2 = search(term2, index);
-		search2.print();
-		
-		// compute the intersection of the searches
-		System.out.println("Query: " + term1 + " AND " + term2);
-		WikiSearch intersection = search1.and(search2);
-		intersection.print();
+//		// search for the first term
+//		String term1 = "java";
+//		System.out.println("Query: " + term1);
+//		WikiSearch search1 = search(term1, index);
+//		search1.print();
+//
+//		// search for the second term
+//		String term2 = "programming";
+//		System.out.println("Query: " + term2);
+//		WikiSearch search2 = search(term2, index);
+//		search2.print();
+//
+//		// compute the intersection of the searches
+//		System.out.println("Query: " + term1 + " AND " + term2);
+//		WikiSearch intersection = search1.and(search2);
+//		intersection.print();
 	}
 }

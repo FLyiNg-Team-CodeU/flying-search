@@ -1,11 +1,13 @@
-import org.jsoup.select.Elements;
-import redis.clients.jedis.Jedis;
-
 import java.io.IOException;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Queue;
+
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
+
+import redis.clients.jedis.Jedis;
 
 
 public class WikiCrawler {
@@ -51,15 +53,27 @@ public class WikiCrawler {
 	 */
 	public String crawl(boolean testing) throws IOException {
         // TODO FILL THIS IN!
-        String url = queue.poll();
-		if (testing) {
-            Elements contents = wf.readWikipedia(url);
-            index.indexPage(url, contents);
 
-        } else {
-
+        if (queue.isEmpty()) {
+            return null;
         }
-		return url;
+        String url = queue.poll();
+        System.out.println("Crawling " + url);
+
+        if (!testing && index.isIndexed(url)) {
+            System.out.println("Already indexed.");
+            return null;
+        }
+
+        Elements paragraphs;
+        if (testing) {
+            paragraphs = wf.readWikipedia(url);
+        } else {
+            paragraphs = wf.fetchWikipedia(url);
+        }
+        index.indexPage(url, paragraphs);
+        queueInternalLinks(paragraphs);
+        return url;
 	}
 	
 	/**
@@ -70,6 +84,18 @@ public class WikiCrawler {
 	// NOTE: absence of access level modifier means package-level
 	void queueInternalLinks(Elements paragraphs) {
         // TODO FILL THIS IN!
+        for (Element paragraph: paragraphs) {
+            Elements elts = paragraph.select("a[href]");
+            for (Element elt: elts) {
+                String relURL = elt.attr("href");
+
+                if (relURL.startsWith("/wiki/")) {
+                    String absURL = "https://en.wikipedia.org" + relURL;
+                    //System.out.println(absURL);
+                    queue.offer(absURL);
+                }
+            }
+        }
 	}
 
 	public static void main(String[] args) throws IOException {
@@ -89,8 +115,6 @@ public class WikiCrawler {
 		do {
 			res = wc.crawl(false);
 
-            // TODO REMOVE THIS BREAK STATEMENT WHEN crawl() IS WORKING
-            break;
 		} while (res == null);
 		
 		Map<String, Integer> map = index.getCounts("the");
